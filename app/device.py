@@ -802,7 +802,7 @@ class DeviceUI:
             empty = not self.engine.profile.phrases
             return screens.list_screen("My phrases", self.phrase_rows(), self.index, LIST_HINTS,
                                        status, armed, note=note,
-                                       header="Phrases you learn in lessons appear here." if empty else None)
+                                       header="Phrases from lessons appear here." if empty else None)
         if screen == "phrase" and self.phrase is not None:
             rows = [Row("Hear it", kind="action", enabled=view.can_speak),
                     Row("Remove", kind="danger"), Row("Back", kind="back")]
