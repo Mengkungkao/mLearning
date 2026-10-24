@@ -108,3 +108,4 @@ bash tools/build-release.sh               # dist/mlearning-<version>.tar.gz
 The app follows the mFruit OS app contract
 ([.claude/rules/mfruit-os-app.md](.claude/rules/mfruit-os-app.md)) and vendors the
 mFruit App SDK in `mfruit_sdk/` (do not edit it here).
+# mLearning
