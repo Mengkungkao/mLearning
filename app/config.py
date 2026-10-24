@@ -178,6 +178,13 @@ class Settings:
             raise ValueError(f"{key} cannot be stepped")
         return self.values[key]
 
+    def peek(self, key: str, direction: int = 1):
+        """The value ``step`` would set, without setting it."""
+        before = self.values[key]
+        value = self.step(key, direction)
+        self.values[key] = before
+        return value
+
     def text(self, key: str) -> str:
         return SETTINGS[key].text(self.values[key])
 

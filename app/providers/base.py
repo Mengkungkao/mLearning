@@ -25,16 +25,16 @@ REFUSED = "refused"
 UNAVAILABLE = "unavailable"
 
 _MESSAGES = {
-    AUTH: ("{name} refused the key", "Check the API key in the .env file, then Retry."),
-    QUOTA: ("{name} quota used up", "Check billing on the provider's website, then Retry."),
-    RATE_LIMIT: ("{name} is busy", "Too many requests just now. Wait a moment, then Retry."),
-    NETWORK: ("No connection to {name}", "Check Wi-Fi, then Retry. Your lesson is kept."),
-    TIMEOUT: ("{name} took too long", "The network may be slow. Retry, or try again later."),
-    SERVER: ("{name} had a problem", "This is on the provider's side. Retry in a moment."),
-    BAD_RESPONSE: ("Unexpected answer from {name}", "Retry. If it keeps happening, see Details."),
-    REQUEST: ("{name} rejected the request", "A setting may be wrong (model name?). See Details."),
-    REFUSED: ("{name} declined to answer", "Try saying it differently, or change the topic."),
-    UNAVAILABLE: ("{name} is not set up", "See Details for what to add."),
+    AUTH: ("Key not accepted", "{name} refused the API key. Check the .env file, then Retry."),
+    QUOTA: ("Quota used up", "{name} says the account has no credit left. Check billing, then Retry."),
+    RATE_LIMIT: ("Too many requests", "{name} is busy just now. Wait a moment, then Retry."),
+    NETWORK: ("No connection", "Can't reach {name}. Check Wi-Fi, then Retry. Your lesson is kept."),
+    TIMEOUT: ("Took too long", "{name} took too long. Retry, or check the network."),
+    SERVER: ("Service problem", "{name} had an error on its side. Retry in a moment."),
+    BAD_RESPONSE: ("Unexpected answer", "{name} sent something unexpected. Retry, or see Details."),
+    REQUEST: ("Request rejected", "{name} rejected the request; a setting may be wrong. See Details."),
+    REFUSED: ("Couldn't answer that", "{name} declined. Try saying it differently."),
+    UNAVAILABLE: ("Not set up", "{name} is not set up. See Details for what to add."),
 }
 
 RETRYABLE = {RATE_LIMIT, NETWORK, TIMEOUT, SERVER}
@@ -54,8 +54,8 @@ class ProviderError(Exception):
 
     def explain(self) -> tuple:
         """(short title, what to do) for the screen."""
-        title, remedy = _MESSAGES.get(self.kind, ("{name} failed", "Retry, or see Details."))
-        return title.format(name=self.provider), remedy
+        title, remedy = _MESSAGES.get(self.kind, ("Something failed", "{name} failed. Retry, or see Details."))
+        return title, remedy.format(name=self.provider)
 
 
 @dataclass

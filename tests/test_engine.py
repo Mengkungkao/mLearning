@@ -74,7 +74,7 @@ class EngineTest(TempData):
         engine.start_lesson("talk")
         self.pump()
         self.assertEqual(self.state(), sm.ERROR)
-        self.assertIn("not set up", engine.view.error.title)
+        self.assertEqual(engine.view.error.title, "Not set up")
         engine.retry()
         self.pump()
         self.assertEqual(self.state(), sm.IDLE)
@@ -172,7 +172,8 @@ class EngineTest(TempData):
         self.asr.results.append(ProviderError(NETWORK, "OpenAI", "connection reset"))
         self.utterance()
         self.assertEqual(self.state(), sm.ERROR)
-        self.assertEqual(engine.view.error.title, "No connection to OpenAI")
+        self.assertEqual(engine.view.error.title, "No connection")
+        self.assertIn("OpenAI", engine.view.error.remedy)
         self.assertIn("Retry", engine.view.error.remedy)
         first_len = self.asr.calls[-1][0]
         self.asr.results.append(Transcript("I work in a cafe", 0.9))
@@ -190,7 +191,7 @@ class EngineTest(TempData):
         self.llm.replies.append(ProviderError(QUOTA, "OpenAI teacher", "insufficient_quota"))
         self.utterance()
         self.assertEqual(self.state(), sm.ERROR)
-        self.assertIn("quota", engine.view.error.title)
+        self.assertEqual(engine.view.error.title, "Quota used up")
         engine.dismiss_error()
         self.pump()
         self.assertEqual(self.state(), sm.IDLE)
@@ -208,7 +209,8 @@ class EngineTest(TempData):
         self.clock.advance(sm.DEADLINES[sm.GENERATING_RESPONSE] + 1)
         engine._watchdog()
         self.assertEqual(self.state(), sm.ERROR)
-        self.assertEqual(engine.view.error.title, "The teacher took too long")
+        self.assertEqual(engine.view.error.title, "Took too long")
+        self.assertIn("The teacher took too long", engine.view.error.remedy)
 
     def test_end_lesson_summarises_records_and_returns_home(self):
         engine = self.make()
@@ -433,3 +435,42 @@ class EngineTest(TempData):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThreadedEngineTest(TempData):
+    """The real engine thread, worker threads and timers, with fakes for the outside world."""
+
+    def test_lesson_runs_on_threads(self):
+        import threading
+        import time as real_time
+        audio_in, audio_out = FakeAudioIn(), FakeAudioOut()
+        llm = FakeLLM([reply("Hi there! What did you do today?"), reply("Sounds fun.")])
+        asr = FakeASR([Transcript("I went to the beach", 0.9)])
+        engine = Engine(self.settings, self.secrets, self.storage, audio_in, audio_out,
+                        providers=providers(asr, llm, FakeTTS()), threaded=True)
+        changed = threading.Condition()
+        engine.add_listener(lambda: (changed.acquire(), changed.notify_all(), changed.release()))
+
+        def wait_for(predicate, seconds=5.0):
+            deadline = real_time.monotonic() + seconds
+            with changed:
+                while not predicate():
+                    left = deadline - real_time.monotonic()
+                    if left <= 0:
+                        return False
+                    changed.wait(left)
+            return True
+
+        engine.start()
+        try:
+            self.assertTrue(wait_for(lambda: engine.view.state == sm.IDLE))
+            engine.start_lesson("talk")
+            self.assertTrue(wait_for(lambda: engine.view.state == sm.LISTENING))
+            self.assertTrue(wait_for(lambda: audio_in.gate), "the echo guard timer opens the gate")
+            pcm = dsp.to_pcm16(speech_like(1.0))
+            engine.on_capture(UTTERANCE, engine.turn, VadEvent("end", pcm, 1.0))
+            self.assertTrue(wait_for(lambda: len(llm.calls) == 2 and engine.view.state == sm.LISTENING))
+        finally:
+            engine.stop()
+        self.assertEqual(engine.sm.state, sm.SHUTTING_DOWN)
+        self.assertEqual(engine.profile.sessions, 1)

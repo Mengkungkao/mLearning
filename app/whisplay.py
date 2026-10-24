@@ -1,10 +1,12 @@
 """Small client for whisplay-daemon foreground apps (Pillow and mfruit_sdk only).
 
 Copied from mFruit OS's app template (templates/whisplay-app-template/app/
-whisplay_app.py), with mDisplay's app id. It follows the Whisplay
-APP_INTEGRATION.md contract: subscribe to events, acquire focus, map the
-shared RGB565 framebuffer, draw, and release focus on exit. It drives only
-the Whisplay LCD; the HDMI screen is the desktop's (display/desktop.py).
+whisplay_app.py) by way of mDisplay, with mLearning's app id. It follows the
+Whisplay APP_INTEGRATION.md contract: subscribe to events, acquire focus,
+map the shared RGB565 framebuffer, draw, and release focus on exit. This is
+the only place mLearning talks to whisplay-daemon (besides the SDK's
+own_escape_key); the display backend interface is ``show(image)`` and
+``has_focus``, so another screen can replace it.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ class WhisplayApp:
     on_exit_request(), on_focus_changed(has_focus)."""
 
     def __init__(self, app_id: str | None = None):
-        self.app_id = app_id or os.environ.get("WHISPLAY_APP_ID", "mdisplay")
+        self.app_id = app_id or os.environ.get("WHISPLAY_APP_ID", "mlearning")
         self.token: str | None = None
         self._file = None
         self._map: mmap.mmap | None = None

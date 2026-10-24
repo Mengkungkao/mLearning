@@ -1,0 +1,70 @@
+# Publishes mLearning's mFruit OS package as a GitHub release whenever
+# manifest.json carries a version that has no release yet: bump "version",
+# push to main, and release v<version> appears (tag created here, from the
+# pushed commit). Devices with mLearning installed are offered it at their next
+# update check. Nothing is published unless the checks, mFruit OS's package
+# preflight and the app's smoke test pass. See docs/RELEASING.md.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - manifest.json
+      - tools/build-release.sh
+      - .github/workflows/release.yml
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version, and whether it is already released
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME, manifest $version"; exit 1
+          fi
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$version is already released; nothing to do"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: System packages
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-numpy python3-pil fonts-dejavu-core
+      - name: Checks (tools/check.sh)
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          git clone --depth 1 https://github.com/Mengkungkao/MFruitOS "$RUNNER_TEMP/MFruitOS"
+          MFRUIT_OS="$RUNNER_TEMP/MFruitOS" bash tools/check.sh
+      - name: Build and check the package (tools/build-release.sh)
+        if: steps.version.outputs.publish == 'true'
+        run: MFRUIT_OS="$RUNNER_TEMP/MFruitOS" bash tools/build-release.sh
+      - name: Publish the release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 tools/release-notes.py "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" "dist/mlearning-$VERSION.tar.gz" dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "mLearning $VERSION" --notes-file "$RUNNER_TEMP/notes.md"

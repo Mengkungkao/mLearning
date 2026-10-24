@@ -31,6 +31,7 @@ from typing import Callable, Optional
 from . import paths
 from .audio import dsp
 from .audio.capture import CAPTURE_ERROR, NO_SPEECH, SPEECH_START, UTTERANCE
+from .audio.playback import PlayResult
 from .audio.vad import VadConfig
 from .config import SETTINGS, Settings
 from .envfile import Secrets
@@ -123,13 +124,14 @@ class Engine:
     def __init__(self, settings: Settings, secrets: Secrets, storage: LearningStorage,
                  audio_in=None, audio_out=None, providers: Optional[registry.Providers] = None,
                  clock: Callable[[], float] = time.monotonic, threaded: bool = True,
-                 build_providers: Callable = registry.build):
+                 build_providers: Callable = registry.build, text_only: bool = False):
         self.settings = settings
         self.secrets = secrets
         self.storage = storage
         self.clock = clock
         self.threaded = threaded
         self.build_providers = build_providers
+        self.text_only = text_only      # terminal lessons: typed in, printed out, no voice
         self.audio_in = audio_in
         self.audio_out = audio_out
         self.providers = providers or registry.Providers()
@@ -195,6 +197,16 @@ class Engine:
 
     def typed(self, text: str) -> None:
         self.post("typed", text)
+
+    def say(self, text: str) -> None:
+        """Speak a phrase outside a lesson (My phrases > Hear it)."""
+        self.post("say", text)
+
+    def stop_speaking(self) -> None:
+        self.post("stop_speaking")
+
+    def remove_phrase(self, phrase: str) -> None:
+        self.post("remove_phrase", phrase)
 
     def retry(self) -> None:
         self.post("retry")
@@ -341,7 +353,13 @@ class Engine:
         self.reload_providers()
         self.sm.go(IDLE, "ready")
         problems = "; ".join(p.title for p in self.providers.problems) or "none"
-        lifecycle.info("app ready: teacher=%s problems=%s", self.providers.can_teach, problems)
+        lifecycle.info("app ready: teacher=%s problems=%s", self.can_teach, problems)
+
+    @property
+    def can_teach(self) -> bool:
+        if self.text_only:
+            return self.providers.llm is not None
+        return self.providers.can_teach
 
     def reload_providers(self) -> None:
         if self._fixed_providers:
@@ -356,9 +374,9 @@ class Engine:
         if self.session is not None or not self.sm.is_(IDLE):
             log.info("start_lesson ignored in %s", self.sm.state)
             return
-        if not self.providers.can_teach:
+        if not self.can_teach:
             self.reload_providers()
-        if not self.providers.can_teach:
+        if not self.can_teach:
             problem = self.providers.problems[0] if self.providers.problems else None
             self._fail("setup", ProviderError(UNAVAILABLE, "Teacher",
                                               problem.title if problem else "not set up"))
@@ -378,7 +396,7 @@ class Engine:
         self.last_audio = b""
         self.turn += 1
         lifecycle.info("lesson start: activity=%s session=%s", activity.id, self.session.id)
-        if self.audio_in is not None:
+        if self.audio_in is not None and not self.text_only:
             self.audio_in.set_gate(False)
             if not self.audio_in.start():
                 log.warning("microphone not open at lesson start: %s", self.audio_in.error)
@@ -592,6 +610,25 @@ class Engine:
                 self.sm.go(IDLE, "switch to interview")
                 self._on_start_lesson("interview")
 
+    def _on_say(self, text: str) -> None:
+        if self.session is not None or not self.sm.is_(IDLE):
+            return
+        if self.providers.tts is None or self.audio_out is None:
+            self._notify("The voice is not set up")
+            return
+        self._speak(text, self.settings.speed_factor)
+
+    def _on_remove_phrase(self, phrase: str) -> None:
+        if self.profile.remove_phrase(phrase):
+            self._save_profile()
+            self._notify("Removed")
+
+    def _on_stop_speaking(self) -> None:
+        if self.sm.is_(SPEAKING) and self.session is None and not self.finishing:
+            self._interrupt_voice()
+            self.turn += 1
+            self.sm.go(IDLE, "stopped")
+
     def _on_toggle_pause(self) -> None:
         if self.session is None:
             return
@@ -737,7 +774,7 @@ class Engine:
                 self.sm.go(IDLE, "no lesson")
             return
         target = session.practice_target
-        hands_free = self.settings["listening_mode"] == "hands_free"
+        hands_free = self.settings["listening_mode"] == "hands_free" and not self.text_only
         if hands_free and (listen or resume):
             if not self._mic_ready():
                 return
@@ -797,6 +834,9 @@ class Engine:
         deadline = 20.0 + len(text) / (8.0 * speed)
         self.turn += 1
         self.sm.go(SPEAKING, "teacher speaking", deadline=deadline)
+        if self.text_only:
+            self.post("spoken", self.turn, PlayResult(True))
+            return
         self._spawn("voice", self._work_speak, self.turn, text, speed)
 
     def _replay(self) -> None:
@@ -1006,7 +1046,7 @@ class Engine:
             notice=self.notice,
             summary=self.summary,
             finishing=self.finishing,
-            can_teach=self.providers.can_teach,
+            can_teach=self.can_teach,
             can_speak=self.providers.can_speak,
             problems=tuple(self.providers.problems),
             remote=tuple(self.providers.remote_names()),

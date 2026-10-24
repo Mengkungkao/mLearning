@@ -1,0 +1,29 @@
+# Checks without hardware (docs/TESTING.md). Fake providers and fake audio
+# stand in for the network, microphone and speaker; device checks are recorded
+# separately (docs/records/).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks and full suite (Python 3.12)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages (the same ones a device uses)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-numpy python3-pil fonts-dejavu-core
+      - name: mFruit OS checkout (package preflight, SDK and contract copies)
+        run: git clone --depth 1 https://github.com/Mengkungkao/MFruitOS "$RUNNER_TEMP/MFruitOS"
+      - name: tools/check.sh
+        env:
+          MFRUIT_OS: ${{ runner.temp }}/MFruitOS
+        run: bash tools/check.sh
