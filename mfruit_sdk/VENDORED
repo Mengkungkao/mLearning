@@ -1,0 +1,3 @@
+mFruit App SDK 1.5.0, copied from mFruit OS (mfruitos/sdk).
+Do not edit these files here: change them in mFruit OS, then run
+MFruitOS/scripts/sdk-sync.sh <the directory that contains mfruit_sdk/>

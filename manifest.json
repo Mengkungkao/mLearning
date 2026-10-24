@@ -1,0 +1,17 @@
+{
+  "id": "mlearning",
+  "name": "mLearning",
+  "version": "0.1.0",
+  "description": "Your English teacher: talk, get corrections and practise; needs an OpenAI key",
+  "entrypoint": "run.sh",
+  "icon": "assets/icon.png",
+  "min_os_version": "1.4.0",
+  "repository": "https://github.com/Mengkungkao/mLearning",
+  "exit_gesture": "none",
+  "disable_esc_exit_key": true,
+  "priority": 42,
+  "test": "test.sh",
+  "persist": [],
+  "env": {},
+  "background": false
+}
