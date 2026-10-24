@@ -134,7 +134,8 @@ def loopback_section(capture: str, playback: str, settings) -> bool:
 
     audio_in = AudioInput(capture, on_event)
     audio_out = AudioOutput(playback)
-    config_vad = VadConfig(start_db=settings["vad_start_db"], end_db=settings["vad_end_db"],
+    start_db, peak_db = config.SENSITIVITY_DB[settings["mic_sensitivity"]]
+    config_vad = VadConfig(start_db=start_db, peak_db=peak_db, end_db=settings["vad_end_db"],
                            min_speech_dbfs=settings["vad_min_speech_dbfs"], end_silence=0.7,
                            no_speech_timeout=15.0)
     audio_in.set_gate(True)

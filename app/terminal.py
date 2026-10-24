@@ -95,10 +95,11 @@ class TerminalView:
             self.say(f"  next time: {summary.next_exercise}")
 
 
-def main(activity_id: str = "talk", voice: bool = False) -> int:
-    engine = build_engine(text_only=not voice)
-    view = TerminalView(engine)
+def main(activity_id: str = "talk", voice: bool = False, engine=None, read=input, out=sys.stdout) -> int:
+    engine = engine or build_engine(text_only=not voice)
+    view = TerminalView(engine, out)
     engine.start()
+    engine.ready.wait(30)               # providers are loaded on the engine thread
     if not engine.can_teach:
         view.say("The teacher is not set up:")
         for problem in engine.providers.problems:
@@ -117,7 +118,7 @@ def main(activity_id: str = "talk", voice: bool = False) -> int:
             if engine.view.summary is not None and not engine.view.in_lesson:
                 break
             try:
-                line = input("\nyou> ").strip()
+                line = read("\nyou> ").strip()
             except EOFError:
                 break
             commands = {"/repeat": engine.repeat, "/slower": engine.slower, "/faster": engine.faster,

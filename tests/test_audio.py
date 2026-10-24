@@ -59,6 +59,25 @@ class DspTest(unittest.TestCase):
         self.assertEqual(dsp.rms_dbfs(np.zeros(100)), dsp.SILENCE_DBFS)
 
 
+def room_noise(seconds, offset=0, seed=4, background_only=False):
+    """Noise following the frame levels measured in a real room on opi2w (tests/data).
+
+    ``background_only`` loops within the part without sound events (from 5 s on)."""
+    import json, os
+    path = os.path.join(os.path.dirname(__file__), "data", "opi2w_room_levels.json")
+    with open(path) as handle:
+        levels = json.load(handle)["levels"]
+    first = 250 if background_only else 0
+    span = len(levels) - first
+    rng = np.random.default_rng(seed)
+    count = int(seconds / 0.02)
+    frames = []
+    for index in range(count):
+        level = levels[first + (offset + index) % span]
+        frames.append(rng.normal(0, 32768 * 10 ** (level / 20), 320))
+    return np.concatenate(frames)
+
+
 class VadTest(unittest.TestCase):
     def run_vad(self, signal, config=None, chunk=640):
         vad = Endpointer(config or VadConfig(no_speech_timeout=None))
@@ -120,11 +139,65 @@ class VadTest(unittest.TestCase):
         self.assertGreater(vad.noise_rejections, 0)
         self.assertGreater(vad.floor, -45)
 
+    def test_a_turn_must_get_loud_enough_above_the_room(self):
+        speech = speech_like(1.0, level=0.03)        # about 25 dB above the room
+        signal = np.concatenate([noise(1.0), speech + noise(1.0, seed=7), noise(2.0, seed=8)])
+        vad, events = self.run_vad(signal, VadConfig(peak_db=12, end_silence=0.8, no_speech_timeout=None))
+        self.assertIn(END, [e.kind for e in events])
+        vad, events = self.run_vad(signal, VadConfig(peak_db=40, end_silence=0.8, no_speech_timeout=None))
+        self.assertNotIn(END, [e.kind for e in events], "too quiet compared with the room")
+        self.assertGreaterEqual(vad.rejected, 1)
+
+    def test_sensitivity_settings_are_ordered(self):
+        from app.config import SENSITIVITY_DB
+        low, normal, high = SENSITIVITY_DB["low"], SENSITIVITY_DB["normal"], SENSITIVITY_DB["high"]
+        self.assertTrue(low[0] > normal[0] > high[0] and low[1] > normal[1] > high[1])
+        for start_db, peak_db in SENSITIVITY_DB.values():
+            self.assertGreaterEqual(peak_db, start_db)
+
     def test_known_floor_skips_calibration(self):
         vad = Endpointer(VadConfig(no_speech_timeout=None), floor=-60.0)
         self.assertFalse(vad.calibrating)
         events = vad.feed(speech_like(0.5))
         self.assertEqual([e.kind for e in events], [START])
+
+    # The fixture's first 5 s hold two real sound events (about 2.5-3.2 s and 4.0-4.5 s,
+    # up to -23 dBFS); from 5 s on it is the room's background only.
+
+    def test_turn_ends_promptly_in_the_measured_opi2w_room(self):
+        """Regression: on opi2w a 1.8 s sound became a 12.4 s upload (2026-10-24)."""
+        for offset in (0, 60, 170):
+            with self.subTest(offset=offset):
+                speech = speech_like(1.8, level=0.15)
+                signal = np.concatenate([room_noise(2.0, offset, background_only=True),
+                                         speech + room_noise(1.8, offset + 100, background_only=True),
+                                         room_noise(6.0, offset + 190, background_only=True)])
+                vad, events = self.run_vad(signal, VadConfig(end_silence=1.3, no_speech_timeout=None))
+                ends = [e for e in events if e.kind == END]
+                self.assertEqual(len(ends), 1, [e.kind for e in events])
+                seconds = dsp.seconds_of(ends[0].pcm, 16000)
+                self.assertLess(seconds, 1.8 + 0.4 + 1.0, f"turn of {seconds:.1f} s for 1.8 s of speech")
+                self.assertGreater(seconds, 1.6)
+
+    def test_the_room_background_does_not_start_turns(self):
+        _, events = self.run_vad(room_noise(12.0, background_only=True), VadConfig(no_speech_timeout=None))
+        self.assertNotIn(START, [e.kind for e in events])
+
+    def test_real_room_events_end_promptly(self):
+        """Sounds in the room may be taken for speech (energy only), but must not run on."""
+        _, events = self.run_vad(room_noise(11.0, 0), VadConfig(end_silence=1.3, no_speech_timeout=None))
+        for event in events:
+            if event.kind == END:
+                self.assertLess(dsp.seconds_of(event.pcm, 16000), 3.5)
+
+    def test_speech_right_after_a_room_event_is_heard(self):
+        speech = speech_like(1.8, level=0.15)
+        signal = np.concatenate([room_noise(4.8, 120), speech + room_noise(1.8, 400),
+                                 room_noise(4.0, 300)])
+        _, events = self.run_vad(signal, VadConfig(end_silence=1.3, no_speech_timeout=None))
+        ends = [e for e in events if e.kind == END]
+        self.assertTrue(any(1.6 < dsp.seconds_of(e.pcm, 16000) < 3.4 for e in ends),
+                        [round(dsp.seconds_of(e.pcm, 16000), 1) for e in ends])
 
     def test_long_turn_is_cut_at_the_limit(self):
         signal = np.concatenate([noise(0.3), speech_like(4.0)])

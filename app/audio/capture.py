@@ -74,6 +74,7 @@ class AudioInput:
         self._turn = 0
         self._hold: Optional[list] = None   # push-to-talk buffer while held
         self._floor = None                  # the room's noise floor, kept between turns
+        self._gate_opened = 0.0
 
     # ---------------------------------------------------------------- stream
     @property
@@ -138,6 +139,8 @@ class AudioInput:
     # ------------------------------------------------------------- listening
     def set_gate(self, open_: bool) -> None:
         with self._lock:
+            if open_ and not self._gate:
+                self._gate_opened = self.clock()
             self._gate = open_
             if not open_:
                 self._preroll.clear()
@@ -269,8 +272,13 @@ class AudioInput:
                 self._endpointer = None
         for event in events:
             if event.kind == START:
+                # numbers only (no content): helps tune detection on a device
+                log.info("speech start %.2f s after the microphone opened: level %.0f dBFS, floor %.0f",
+                         self.clock() - self._gate_opened, endpointer.level, endpointer.floor)
                 self.on_event(SPEECH_START, turn, None)
             elif event.kind == END:
+                log.info("turn end: %.1f s kept, %.1f s voiced%s", len(event.pcm) / 32000.0,
+                         event.speech_seconds, " (cut at the limit)" if event.truncated else "")
                 self.on_event(UTTERANCE, turn, event)
             elif event.kind == TIMEOUT:
                 self.on_event(NO_SPEECH, turn, None)

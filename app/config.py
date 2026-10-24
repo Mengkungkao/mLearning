@@ -94,6 +94,9 @@ _TABLE = (
     Setting("session_minutes", "Lesson length", 15,
             ((10, "10 min"), (15, "15 min"), (20, "20 min"), (30, "30 min"), (0, "No limit")),
             help="The teacher suggests finishing after this long"),
+    Setting("mic_sensitivity", "Mic sensitivity", "normal",
+            (("low", "Low"), ("normal", "Normal"), ("high", "High")),
+            help="Low for a noisy room (talk closer); high for a quiet voice in a quiet room"),
     Setting("cues", "Sounds", True, kind="bool",
             help="A short blip when the teacher starts listening"),
     Setting("keep_transcripts", "Keep transcripts", "off",
@@ -122,9 +125,7 @@ _TABLE = (
             help="auto, or an ALSA device such as plughw:3 or capture"),
     Setting("playback_device", "Speaker", "auto", kind="text", menu=False,
             help="auto, or an ALSA device such as plughw:3 or playback"),
-    Setting("vad_start_db", "Speech starts above noise by", 10.0, kind="float",
-            minimum=3, maximum=30, menu=False),
-    Setting("vad_end_db", "Speech continues above noise by", 6.0, kind="float",
+    Setting("vad_end_db", "Speech continues above noise by", 8.0, kind="float",
             minimum=1, maximum=25, menu=False),
     Setting("vad_min_speech_dbfs", "Quietest speech", -52.0, kind="float",
             minimum=-80, maximum=-20, menu=False),
@@ -142,6 +143,8 @@ MENU_KEYS = tuple(setting.key for setting in _TABLE if setting.menu)
 PATIENCE_SECONDS = {"short": 0.8, "normal": 1.3, "long": 2.2}
 SPEED_FACTORS = {"slow": 0.8, "normal": 1.0, "fast": 1.2}
 CORRECTION_LIMITS = {"few": 1, "normal": 2, "many": 3}
+# Mic sensitivity -> (dB above the room to start a turn, dB above it a turn must reach)
+SENSITIVITY_DB = {"low": (14.0, 17.0), "normal": (10.0, 12.0), "high": (7.0, 9.0)}
 
 
 @dataclass

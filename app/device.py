@@ -796,11 +796,13 @@ class DeviceUI:
                 body = (f"{problem.title}. Put the key in mLearning's .env file (Details shows "
                         "where), then Retry.") if problem and "key" in problem.title.lower() else \
                     (problem.remedy if problem else "See Details.")
-            return screens.problem("Teacher setup", title, body, list(PROBLEM_CHOICES), self.index,
+            return screens.problem("Setup", title, body, list(PROBLEM_CHOICES), self.index,
                                    LIST_HINTS, status, armed)
         if screen == "phrases":
+            empty = not self.engine.profile.phrases
             return screens.list_screen("My phrases", self.phrase_rows(), self.index, LIST_HINTS,
-                                       status, armed, note=note)
+                                       status, armed, note=note,
+                                       header="Phrases you learn in lessons appear here." if empty else None)
         if screen == "phrase" and self.phrase is not None:
             rows = [Row("Hear it", kind="action", enabled=view.can_speak),
                     Row("Remove", kind="danger"), Row("Back", kind="back")]

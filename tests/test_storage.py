@@ -27,10 +27,10 @@ class ConfigTest(TempData):
     def test_invalid_values_fall_back_unknown_keys_dropped(self):
         with open(self.settings.path, "w") as out:
             json.dump({"settings": {"speech_speed": "warp", "voice": "nova", "bogus": 1,
-                                    "vad_start_db": 12, "session_minutes": 7}}, out)
+                                    "vad_end_db": 12, "session_minutes": 7}}, out)
         settings = config.load(self.settings.path)
         self.assertEqual(settings["speech_speed"], "normal")
-        self.assertEqual(settings["vad_start_db"], 12.0)
+        self.assertEqual(settings["vad_end_db"], 12.0)
         self.assertEqual(settings["session_minutes"], 15)
         self.assertNotIn("bogus", settings.values)
 

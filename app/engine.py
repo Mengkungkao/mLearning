@@ -33,7 +33,7 @@ from .audio import dsp
 from .audio.capture import CAPTURE_ERROR, NO_SPEECH, SPEECH_START, UTTERANCE
 from .audio.playback import PlayResult
 from .audio.vad import VadConfig
-from .config import SETTINGS, Settings
+from .config import SENSITIVITY_DB, SETTINGS, Settings
 from .envfile import Secrets
 from .learning.profile import LearnerProfile
 from .learning.storage import LearningStorage
@@ -160,6 +160,7 @@ class Engine:
         self.notice_until = 0.0
         self.timers: list = []          # [due, name, turn]
         self.view = View()
+        self.ready = threading.Event()  # set once providers and devices are known (init done)
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -352,6 +353,7 @@ class Engine:
     def _on_init(self) -> None:
         self.reload_providers()
         self.sm.go(IDLE, "ready")
+        self.ready.set()
         problems = "; ".join(p.title for p in self.providers.problems) or "none"
         lifecycle.info("app ready: teacher=%s problems=%s", self.can_teach, problems)
 
@@ -800,7 +802,8 @@ class Engine:
 
     def _vad_config(self) -> VadConfig:
         s = self.settings
-        return VadConfig(start_db=s["vad_start_db"], end_db=s["vad_end_db"],
+        start_db, peak_db = SENSITIVITY_DB[s["mic_sensitivity"]]
+        return VadConfig(start_db=start_db, peak_db=peak_db, end_db=s["vad_end_db"],
                          min_speech_dbfs=s["vad_min_speech_dbfs"], end_silence=s.end_silence,
                          max_utterance=float(s["max_utterance"]),
                          no_speech_timeout=float(s["no_speech_timeout"]))
